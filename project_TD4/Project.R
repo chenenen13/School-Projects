@@ -1,0 +1,352 @@
+# TD4_Chenjie
+# Date: 2023-12-12
+
+# Part 1: Warm up - Data settings and unit root tests
+# Exercise 1: Data settings 
+
+# Install and load the required packages
+library(quantmod)
+
+getSymbols("UNRATENSA", src = "FRED")  # Unemployment rate from FRED
+
+data <- UNRATENSA
+
+str(data)
+
+# Example using decompose function
+unemployement_ts <- ts(data, start=c(1948,01), frequency = 12) 
+plot(unemployement_ts, main = "Unemployement rate")
+decomposed_data <- decompose(unemployement_ts)
+plot(decomposed_data)
+adjusted_data <- unemployement_ts - decomposed_data$seasonal
+
+plot(adjusted_data, main = "Seasonally Adjusted Unemployment Rate")
+
+# Fit a seasonal regression model
+model <- lm(unemployement_ts ~ as.factor(cycle(unemployement_ts)))
+
+# Get the estimated seasonal component
+seasonal_component <- predict(model)
+
+# Remove the seasonal component
+seasonal_removed <- unemployement_ts - seasonal_component
+
+# Plot the original series and the series with seasonal component removed
+library(ggplot2)
+library(ggfortify)
+library(gridExtra)
+
+# Calculate ACF and PACF for unemployement_ts
+acf_unemployment_ts <- acf(unemployement_ts, plot = FALSE)
+pacf_unemployment_ts <- pacf(unemployement_ts, plot = FALSE)
+
+# Create separate plots for ACF and PACF
+acf_plot <- autoplot(acf_unemployment_ts) + labs(title = "ACF of Unemployment Rate")
+pacf_plot <- autoplot(pacf_unemployment_ts) + labs(title = "PACF of Unemployment Rate")
+
+# Combine ACF and PACF plots on the same line
+grid.arrange(acf_plot, pacf_plot, ncol = 2)
+
+# we do the same for the filtered data
+# Calculate ACF and PACF for seasonal_removed
+acf_seasonal_removed_ts <- acf(seasonal_removed, plot = FALSE)
+pacf_seasonal_removed_ts <- pacf(seasonal_removed, plot = FALSE)
+
+# Create separate plots for ACF and PACF
+acf_plot_removed <- autoplot(acf_seasonal_removed_ts) + labs(title = "ACF of Seasonally Adjusted Unemployment Rate")
+pacf_plot_removed <- autoplot(pacf_seasonal_removed_ts) + labs(title = "PACF of Seasonally Adjusted Unemployment Rate")
+
+# Combine ACF and PACF plots on the same line
+grid.arrange(acf_plot_removed, pacf_plot_removed, ncol = 2)
+
+# Load the "urca" package for unit root tests
+library(urca)
+
+seasonal_removed <- seasonal_removed[complete.cases(seasonal_removed)]
+
+# Perform the Dickey-Fuller test
+adf_test <- ur.df(seasonal_removed)
+
+# Print the test results
+summary(adf_test)
+
+# Perform the ADF test with selection of lags using information criteria
+adf_test <- ur.df(seasonal_removed, type = "drift", selectlags = "BIC")
+
+# Print the test results
+summary(adf_test)
+
+# Perform Phillips-Perron test using the tseries package
+library(tseries)
+ur.pp(seasonal_removed)
+
+# KPSS Test on different series
+set.seed(123)  # For reproducibility
+n <- 100  # Number of observations
+random_walk <- cumsum(rnorm(n))  # Cumulative sum of normal random variables
+
+drift <- 0.5  # Define the drift magnitude
+random_walk_drift <- cumsum(rnorm(n) + drift)
+
+stationary_series <- rnorm(n)  # Random normal variables
+
+# KPSS Test on a Pure Random Walk
+kpss_test_rw <- ur.kpss(random_walk)
+summary(kpss_test_rw)
+
+# KPSS Test on a Random Walk with Drift
+kpss_test_rw_drift <- ur.kpss(random_walk_drift)
+summary(kpss_test_rw_drift)
+
+# KPSS Test on a Stationary Series
+kpss_test_stationary <- ur.kpss(stationary_series)
+summary(kpss_test_stationary)
+
+# KPSS Test on seasonal_removed
+ur.kpss(seasonal_removed)
+
+# Assuming 'retail_sales_data' is your time series
+library(forecast)
+
+arma_model <- auto.arima(seasonal_removed, d=0)
+summary(arma_model)
+
+arma_model2 <- auto.arima(seasonal_removed, d=1)
+summary(arma_model2)
+
+# Fit the ARIMA model
+model <- arima(seasonal_removed, order = c(2, 0, 1))
+
+# Residual Analysis
+residuals <- residuals(model)
+
+# ACF and PACF Plots
+acf(residuals)
+pacf(residuals)
+
+# Create the QQ plot
+qqnorm(residuals)
+qqline(residuals)
+
+# Perform the Ljung-Box test
+lag <- 10  # Number of lags to test (adjust as needed)
+ljung_box_test <- Box.test(residuals, lag = lag, type = "Ljung-Box")
+
+# Print the test results
+print(ljung_box_test)
+
+# Out-of-Sample Validation
+# Split the data into training and validation sets
+train_data <- seasonal_removed[1:80]
+validation_data <- seasonal_removed[81:100]
+
+# Fit the model on the training data
+model_train <- arima(train_data, order = c(2, 0, 1))
+
+# Generate forecasts on the validation data
+forecast_validation <- forecast(model_train, h = 20)
+
+# Compare the forecasted values with actual values
+validation_actual <- seasonal_removed[81:100]
+
+# Calculate error measures
+accuracy(forecast_validation, validation_actual)
+
+# Loading and analyzing stock prices
+library(tidyquant)
+jnj = tq_get("JNJ", get="stock.prices", from="1997-01-01") %>% tq_transmute(mutate_fun=to.period, period="months")
+
+# Load the required packages
+library(tseries)
+
+jnj_close = ts(jnj$close, start = c(1997,01), frequency = 12)
+# Perform the ADF test
+adf_test <- ur.df(jnj_close, type = "drift", lags = 0)
+
+# Print the test results
+summary(adf_test)
+
+# Including Plots
+library(forecast)
+
+auto_model <- auto.arima(jnj_close)
+summary(auto_model)
+
+acf(jnj_close, lag.max = 50)
+pacf(jnj_close)
+
+arima_model_jnj <- arima(jnj_close, order = c(0, 1, 2))
+summary(arima_model_jnj)
+
+# Plotting the estimated vs observed values
+plot(jnj_close, type = "l", main = "JNJ Stock Prices - Observed vs Fitted", col = "blue")
+lines(fitted(arima_model_jnj), col = "red")
+
+residuals <- residuals(arima_model_jnj)
+
+# Perform quality checks
+plot(residuals, main = "Residuals of ARIMA model")
+acf(residuals, main = "ACF of Residuals")
+
+hist(residuals, main = "Histogram of Residuals", xlab = "Residuals", breaks = 30, col = "blue")
+qqnorm(residuals); qqline(residuals)
+
+Box.test(residuals, type = "Ljung-Box")
+
+# Forecasting
+library(forecast)
+# Assuming 'arima_model' is your fitted ARIMA model
+forecasted_values <- forecast(arima_model_jnj, h = 15)  # 'h = 3' for three months ahead
+
+print(forecasted_values)
+plot(forecasted_values, xlim = c(2021, 2025), type="l")
+
+# Last observed value
+last_value <- tail(jnj_close, n = 1)
+
+# Extract residuals (error terms) and get the last two values
+residuals <- residuals(arima_model_jnj)
+last_residuals <- tail(residuals, n = 2)
+
+# Coefficients from your ARIMA model
+ma1 <- -0.1208
+ma2 <- -0.2527
+drift <- 0.3924
+
+# Forecast for the next three periods
+forecast_1 <- last_value + drift + ma1 * last_residuals[2] + ma2 * last_residuals[1]
+forecast_2 <- forecast_1 + drift  # Future errors assumed as 0
+forecast_3 <- forecast_2 + drift  # Future errors assumed as 0
+
+# Print forecasted values
+forecast_values <- c(forecast_1, forecast_2, forecast_3)
+print(forecast_values)
+
+sigma <- sqrt(arima_model_jnj$sigma2)
+# Assuming a 95% confidence interval
+critical_value <- qnorm(0.975)  # Approximately 1.96
+margin_error_1 <- critical_value * sigma * sqrt(1 + 1)  # For first forecast
+margin_error_2 <- critical_value * sigma * sqrt(1 + 2)  # For second forecast
+margin_error_3 <- critical_value * sigma * sqrt(1 + 3)  # For third forecast
+lower_bounds <- forecast_values - c(margin_error_1, margin_error_2, margin_error_3)
+upper_bounds <- forecast_values + c(margin_error_1, margin_error_2, margin_error_3)
+
+confidence_intervals <- data.frame(
+  Time = 1:3,
+  Forecast = forecast_values,
+  Lower_95 = lower_bounds,
+  Upper_95 = upper_bounds
+)
+print(confidence_intervals)
+
+# Random Walks with Different Characteristics
+set.seed(123)  # For reproducibility
+n <- 100       # Number of observations
+
+# 1. Pure Random Walk
+rw1 <- cumsum(rnorm(n))  # Cumulative sum of normal random variables
+
+# 2. Random Walk with a Break in Level
+breakpoint <- 50  # Define the point of level break
+level_change <- 10  # Define the magnitude of the level change
+
+# Generating the random walk with a break in level
+rw2 <- c(cumsum(rnorm(breakpoint)), cumsum(rnorm(n - breakpoint)) + level_change + rw1[breakpoint])
+
+# 3. Random Walk with Breaks in Both Level and Trend
+trend_change <- 0.2  # Define the magnitude of trend change
+
+# Generating the random walk with both level and trend breaks
+rw3 <- c(cumsum(rnorm(breakpoint)), cumsum(rnorm(n - breakpoint, mean = trend_change)) + level_change + rw1[breakpoint])
+
+plot(rw1, type = "l", col = "blue", ylim = range(c(rw1, rw2, rw3)), main = "Random Walks", ylab = "Value")
+lines(rw2, col = "red")
+lines(rw3, col = "green")
+legend("topright", legend = c("Pure Random Walk", "Random Walk with Level Break", "Random Walk with Level and Trend Breaks"), col = c("blue", "red", "green"), lty = 1)
+
+# Zivot and Andrews Test
+library(urca)
+
+# Zivot and Andrews test for the first random walk (rw1)
+za_rw1 <- ur.za(rw1, model = "both", lag = 2)  # 'both' for break in level and trend
+
+# Zivot and Andrews test for the second random walk (rw2)
+za_rw2 <- ur.za(rw2, model = "both", lag = 2)
+
+# Zivot and Andrews test for the third random walk (rw3)
+za_rw3 <- ur.za(rw3, model = "both", lag = 2)
+
+# Summary for each random walk
+summary_rw1 <- summary(za_rw1)
+summary_rw2 <- summary(za_rw2)
+summary_rw3 <- summary(za_rw3)
+
+# Print the summaries
+print("Summary for Pure Random Walk:")
+print(summary_rw1)
+
+print("Summary for Random Walk with Level Break:")
+print(summary_rw2)
+
+print("Summary for Random Walk with Level and Trend Breaks:")
+print(summary_rw3)
+
+summary(ur.za(unemployement_ts, model = "both"))
+
+# Loading and analyzing bond yields
+library(quantmod)
+
+# Load Moody's Seasoned Aaa and Baa Corporate Bond Yield rates
+getSymbols("AAA", src = "FRED")  # Aaa Corporate Bond Yield
+getSymbols("BAA", src = "FRED")  # Baa Corporate Bond Yield
+
+# Calculate the credit spread
+credit_spread <- BAA - AAA
+
+str(credit_spread)
+# Assuming 'credit_spread' is calculated as the difference between BAA and AAA
+credit_spread_ts <- ts(credit_spread, start=c(1919,1), frequency = 12)
+
+# Plot the credit spread
+plot(credit_spread_ts, main = "Monthly Credit Spread", xlab = "Year", ylab = "Spread")
+
+# Seasonality check using decomposition
+decomposed_spread <- decompose(credit_spread_ts)
+plot(decomposed_spread)
+
+credit_spread_seasonal_removed <- credit_spread_ts - decomposed_spread$seasonal
+plot(credit_spread_seasonal_removed)
+
+class(credit_spread_seasonal_removed)
+str(credit_spread_seasonal_removed)
+
+adf_test <- ur.df(credit_spread_seasonal_removed)
+summary(adf_test)
+
+summary((ur.pp(credit_spread_ts)))
+
+summary((ur.kpss(credit_spread_ts)))
+
+summary(ur.za(credit_spread_ts))
+
+acf(credit_spread_seasonal_removed)
+pacf(credit_spread_seasonal_removed)
+
+# Fitting and analyzing ARIMA model on credit spread data
+library(forecast)
+
+# Fit a model with the dummy variable
+arima_model <- auto.arima(credit_spread_seasonal_removed)
+summary(arima_model)
+
+# Check residuals
+checkresiduals(arima_model)
+
+# Ljung-Box Test
+Box.test(residuals(arima_model), type = "Ljung-Box")
+
+# Forecast for the next three months
+forecast_spread <- forecast(arima_model, h = 30)
+plot(forecast_spread, xlim = c(2020,2023))
+print(forecast_spread)
+
